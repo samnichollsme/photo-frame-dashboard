@@ -1,5 +1,6 @@
 import { BINS, NIGHT, TEAM_STYLE } from './config.js';
 import { binIcon, playIcons, umbrellaIcon, weatherIcon } from './icons.js';
+import { loadFootball } from './football.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -206,9 +207,9 @@ function teamCard(t) {
     </div></div>`;
   }
   const badge = p.kind === 'live'
-    ? `<span class="badge">${f.statusShort === 'HT' ? 'Half time' : `Live ${f.elapsed || 0}'`}</span>`
+    ? `<span class="badge">${f.statusShort === 'HT' ? 'Half time' : f.elapsed ? `Live ${f.elapsed}'` : 'In progress'}</span>`
     : `<span class="badge quiet">Full time ${resultLetter(t, f)}</span>`;
-  const progress = p.kind === 'live' ? `<div class="bar"><i style="width:${Math.min(100, Math.round((f.elapsed || 0) / 90 * 100))}%"></i></div>` : '';
+  const progress = p.kind === 'live' && f.elapsed ? `<div class="bar"><i style="width:${Math.min(100, Math.round((f.elapsed || 0) / 90 * 100))}%"></i></div>` : '';
   return `<div class="${cls}">${stripe}<div class="pad">
     <div class="head"><p class="label">${esc(f.league)}</p>${badge}</div>
     <div class="row score">${crest(f.home, f.home.id === t.id ? st.short : '')}<span>${esc(f.home.name)}</span><b>${f.home.goals == null ? '' : f.home.goals}</b></div>
@@ -217,20 +218,28 @@ function teamCard(t) {
   </div></div>`;
 }
 
-poll('/api/football', (d) => {
-  // Every minute while a match is on or about to start, otherwise every 15 minutes.
-  const busy = d && d.teams && d.teams.some((t) => t.next && (t.next.status === 'live' || Math.abs(Date.parse(t.next.kickoff) - Date.now()) < 15 * 60e3));
-  return busy ? 60e3 : 15 * 60e3;
-}, (d, err) => {
+function renderFootball(d, err) {
   const el = $('teams');
   if (!d) { el.innerHTML = `<div class="team kit-solid"><div class="pad"><p class="label">Football</p><p class="sub">${err ? 'Unavailable, retrying' : 'Loading…'}</p></div></div>`; return; }
-  if (!d.configured) {
-    el.innerHTML = ['Liverpool', 'Kidderminster Harriers'].map((n, i) =>
-      `<div class="team ${i ? 'kit-halves' : 'kit-solid'}">${i ? '<div class="stripe"><i></i><i></i></div>' : ''}<div class="pad"><p class="label">${n}</p><p class="sub">Football data isn't set up.</p></div></div>`).join('');
-    return;
-  }
   el.innerHTML = d.teams.map(teamCard).join('');
-});
+}
+
+// Fetched on the frame (see football.js); the server's cached copy is the fallback.
+let football = null;
+async function footballLoop() {
+  let err = null;
+  try {
+    football = await loadFootball();
+  } catch (e) {
+    err = e;
+    try { const r = await fetch('/api/football', { cache: 'no-store' }); if (r.ok) { football = await r.json(); err = null; } } catch (e2) { /* keep last */ }
+  }
+  renderFootball(football, err);
+  // Every minute while a match is on or about to start, otherwise every 15 minutes.
+  const busy = football && football.teams.some((t) => t.next && (t.next.status === 'live' || Math.abs(Date.parse(t.next.kickoff) - Date.now()) < 15 * 60e3));
+  setTimeout(footballLoop, err && !football ? 60e3 : busy ? 60e3 : 15 * 60e3);
+}
+footballLoop();
 
 // ---------- Spotify (hidden until connected and playing) ----------
 
