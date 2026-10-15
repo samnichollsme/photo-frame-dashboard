@@ -7,3 +7,7 @@ SPORTSDB_KEY=
 # iCloud calendars as JSON, in single quotes (the # in colours would start a comment otherwise).
 # CALENDARS='[{"name":"Family","colour":"#AFA9EC","url":"webcal://p00-caldav.icloud.com/published/2/..."}]'
 CALENDARS=
+
+# Spotify app from https://developer.spotify.com/dashboard (redirect URI http://127.0.0.1:5174/api/spotify/callback).
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=

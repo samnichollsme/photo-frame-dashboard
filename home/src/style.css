@@ -125,3 +125,27 @@ b.w { color: #97C459; } b.l { color: #F09595; } b.d { color: #D3D1C7; }
 .night.on { opacity: 0.6; }
 .team.kit-solid img.crest { background: #FCEBEB; border-radius: 50%; padding: 4px; }
 .team.kit-solid b.l { color: #FCEBEB; }
+.controls button.busy { opacity: 0.5; }
+
+/* Full-screen now playing (an overlay in the page; the frame has no Fullscreen API) */
+.player .art, .player .track { cursor: pointer; }
+.np {
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 5;
+  background: #1a1640; display: flex; align-items: center; gap: 56px; padding: 0 72px;
+}
+.np[hidden] { display: none; }
+.np-art { width: 560px; height: 560px; flex: none; border-radius: 20px; background: #7F77DD; object-fit: cover; }
+.np-side { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.np-title { font-size: 52px; font-weight: 500; line-height: 1.1; }
+.np-artist { font-size: 30px; color: #CECBF6; margin-top: 12px; }
+.np-album { font-size: 22px; color: #AFA9EC; margin-top: 6px; }
+.np-time { display: flex; align-items: center; gap: 14px; margin: 44px 0 30px; font-size: 18px; color: #AFA9EC; font-variant-numeric: tabular-nums; }
+.np-time .bar { flex: 1; height: 6px; background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+.np-time .bar i { display: block; height: 6px; background: #EEEDFE; border-radius: 3px; }
+.controls.big { gap: 24px; margin-bottom: 30px; }
+.controls.big button { width: 104px; height: 104px; font-size: 52px; }
+.np .device { align-self: flex-start; font-size: 20px; }
+.np-close {
+  position: absolute; top: 20px; right: 24px; width: 72px; height: 72px; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1); color: #EEEDFE; font-size: 48px; line-height: 1;
+}

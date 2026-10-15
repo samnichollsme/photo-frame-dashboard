@@ -234,17 +234,101 @@ poll('/api/football', (d) => {
 
 // ---------- Spotify (hidden until connected and playing) ----------
 
-poll('/api/spotify', 15e3, (s) => {
+let spotifyTimer = null;
+let pausedSince = 0;
+async function spotifyLoop() {
+  clearTimeout(spotifyTimer);
+  let wait = 30e3;
+  try {
+    const r = await fetch('/api/spotify', { cache: 'no-store' });
+    const s = r.ok ? await r.json() : null;
+    if (s && s.item) {
+      if (s.isPlaying) pausedSince = 0; else if (!pausedSince) pausedSince = Date.now();
+    }
+    // Show while playing, and for 15 minutes after pausing so it can be resumed from the frame.
+    const show = !!(s && s.item && (s.isPlaying || Date.now() - pausedSince < 15 * 60e3));
+    renderPlayer(show ? s : null);
+    wait = s && s.isPlaying ? 5e3 : 30e3;
+  } catch (err) {
+    wait = 60e3;
+  }
+  spotifyTimer = setTimeout(spotifyLoop, wait);
+}
+
+let npOpen = false;
+let lastSpotify = null;
+
+const controls = (s, big) => `<div class="controls${big ? ' big' : ''}"><button data-a="previous" aria-label="Previous">${playIcons.prev}</button><button class="main" data-a="${s.isPlaying ? 'pause' : 'play'}" aria-label="${s.isPlaying ? 'Pause' : 'Play'}">${s.isPlaying ? playIcons.pause : playIcons.play}</button><button data-a="next" aria-label="Next">${playIcons.next}</button></div>`;
+const fmtTime = (ms) => { const t = Math.round((ms || 0) / 1000); return `${Math.floor(t / 60)}:${pad(t % 60)}`; };
+
+function renderPlayer(s) {
+  lastSpotify = s;
   const el = $('player');
-  const playing = s && s.configured && s.item;
-  el.hidden = !playing;
-  $('screen').classList.toggle('with-player', !!playing);
-  if (!playing) return;
-  const pct = Math.round(s.progress / s.duration * 100);
-  el.innerHTML = `<img class="art" src="${esc(s.item.art)}" alt="">
-    <div class="track"><b>${esc(s.item.title)}</b><span>${esc(s.item.artist)} · ${esc(s.item.album)}</span><div class="bar"><i style="width:${pct}%"></i></div></div>
-    <div class="controls"><button data-a="previous">${playIcons.prev}</button><button class="main" data-a="${s.isPlaying ? 'pause' : 'play'}">${s.isPlaying ? playIcons.pause : playIcons.play}</button><button data-a="next">${playIcons.next}</button></div>
-    <div class="device">${playIcons.speaker} ${esc(s.device || '')}</div>`;
+  el.hidden = !s;
+  $('screen').classList.toggle('with-player', !!s);
+  if (!s) { el.innerHTML = ''; closeNowPlaying(); return; }
+  const pct = s.duration ? Math.round(s.progress / s.duration * 100) : 0;
+  el.innerHTML = `${s.item.art ? `<img class="art" data-open="np" src="${esc(s.item.art)}" alt="">` : '<div class="art" data-open="np"></div>'}
+    <div class="track" data-open="np"><b>${esc(s.item.title)}</b><span>${esc(s.item.artist)}${s.item.album ? ` · ${esc(s.item.album)}` : ''}</span><div class="bar"><i style="width:${pct}%"></i></div></div>
+    ${controls(s, false)}
+    ${s.device ? `<div class="device">${playIcons.speaker} ${esc(s.device)}</div>` : ''}`;
+  if (npOpen) renderNowPlaying(s);
+}
+
+// Full-screen now playing: opened by tapping the art or title, closed with the X or by tapping
+// outside the controls. It closes by itself after 10 minutes so the dashboard comes back.
+let npTimer = null;
+function renderNowPlaying(s) {
+  const pct = s.duration ? Math.round(s.progress / s.duration * 100) : 0;
+  const art = s.item.artLarge || s.item.art;
+  $('np').innerHTML = `<button class="np-close" data-close="np" aria-label="Close">×</button>
+    ${art ? `<img class="np-art" src="${esc(art)}" alt="">` : '<div class="np-art"></div>'}
+    <div class="np-side">
+      <div class="np-title">${esc(s.item.title)}</div>
+      <div class="np-artist">${esc(s.item.artist)}</div>
+      ${s.item.album ? `<div class="np-album">${esc(s.item.album)}</div>` : ''}
+      <div class="np-time"><span>${fmtTime(s.progress)}</span><div class="bar"><i style="width:${pct}%"></i></div><span>${fmtTime(s.duration)}</span></div>
+      ${controls(s, true)}
+      ${s.device ? `<div class="device">${playIcons.speaker} ${esc(s.device)}</div>` : ''}
+    </div>`;
+}
+function openNowPlaying() {
+  if (!lastSpotify) return;
+  npOpen = true;
+  renderNowPlaying(lastSpotify);
+  $('np').hidden = false;
+  clearTimeout(npTimer);
+  npTimer = setTimeout(closeNowPlaying, 10 * 60e3);
+}
+function closeNowPlaying() {
+  npOpen = false;
+  clearTimeout(npTimer);
+  $('np').hidden = true;
+  $('np').innerHTML = '';
+}
+
+document.addEventListener('click', async (e) => {
+  if (e.target.closest('[data-open="np"]')) { openNowPlaying(); return; }
+  const btn = e.target.closest('button[data-a]');
+  if (btn) {
+    btn.classList.add('busy');
+    try { await fetch(`/api/spotify/${btn.dataset.a}`, { method: 'POST' }); } catch (err) { /* refresh shows the real state */ }
+    setTimeout(spotifyLoop, 600); // give Spotify a moment to apply it
+    return;
+  }
+  if (npOpen && (e.target.closest('[data-close="np"]') || e.target === $('np'))) closeNowPlaying();
 });
+spotifyLoop();
+
+// Reload when a new build is served, so the frame never keeps running old code. Vite gives each
+// build's script a new hashed name, so compare it with the one this page loaded.
+const myScript = (document.querySelector('script[type="module"][src]') || {}).src || '';
+setInterval(async () => {
+  try {
+    const html = await (await fetch('/', { cache: 'no-store' })).text();
+    const m = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/);
+    if (m && myScript && new URL(m[1], location.href).href !== myScript) location.reload();
+  } catch (err) { /* offline: try again next time */ }
+}, 60e3);
 
 tick();

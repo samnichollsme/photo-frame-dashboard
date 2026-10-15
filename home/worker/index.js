@@ -2,6 +2,7 @@
 // this server: third-party HTTPS fails on Android 6, and keys must not reach the page.
 import ICAL from 'ical.js';
 import { LOCATION, TEAMS, TIMEZONE } from './config.js';
+import { art, spotify } from './spotify.js';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -32,9 +33,10 @@ export default {
         case '/api/weather': return json(await weather());
         case '/api/football': return json(await football(env));
         case '/api/calendar': return json(await calendar(env));
-        case '/api/spotify': return json({ configured: false });
+        case '/api/art': return art(url);
         case '/api/logo': return logo(url);
       }
+      if (url.pathname === '/api/spotify' || url.pathname.startsWith('/api/spotify/')) return await spotify(request, env, url);
       if (url.pathname.startsWith('/api/')) return json({ error: 'not found' }, 404);
     } catch (err) {
       return json({ error: String(err && err.message || err) }, 502);
