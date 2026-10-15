@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#1c1c1b">
+  <title>Home</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <main class="screen" id="screen">
+    <section class="card left">
+      <div class="clock" id="clock">--:--</div>
+      <div class="date" id="date"></div>
+      <div class="spacer"></div>
+      <div class="now" id="weather-now"></div>
+      <div class="hint" id="weather-hint"></div>
+      <div class="minis">
+        <div class="mini-days" id="weather-days"></div>
+        <div class="bin" id="bin"></div>
+      </div>
+    </section>
+
+    <section class="card middle" id="calendar"></section>
+
+    <section class="teams" id="teams"></section>
+
+    <section class="player" id="player" hidden></section>
+  </main>
+  <div class="night" id="night"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

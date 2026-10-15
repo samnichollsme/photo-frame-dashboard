@@ -20,3 +20,15 @@ scripts/si006-webview-overlay/build/
 
 # Private per-frame records (docs/frame-records.md). No trailing slash, so a symlink is ignored too.
 /frames
+
+# Secrets for the dashboards: keys, calendar links, tokens.
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Build output and dependencies for the home dashboard.
+/home/node_modules/
+/home/dist/
+/home/.wrangler/
