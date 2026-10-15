@@ -1,12 +1,14 @@
-// Spotify now-playing and remote control through the Web API. Sign in once from the Mac at
-// http://127.0.0.1:5174/api/spotify/login; the refresh token is kept in the STORE KV namespace.
+// Spotify now-playing and remote control through the Web API. Sign in once at /api/spotify/login
+// (on the Mac at http://127.0.0.1:5174, or on the deployed address); the refresh token is kept in
+// the STORE KV namespace.
 // Playback control (play/pause/skip) needs Spotify Premium.
 
 const ACCOUNTS = 'https://accounts.spotify.com';
 const API = 'https://api.spotify.com/v1';
 const SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing';
-// Spotify only allows plain http redirects to a loopback IP, so sign-in has to happen on the Mac.
-const REDIRECT = 'http://127.0.0.1:5174/api/spotify/callback';
+// The redirect must be listed in the Spotify app: http://127.0.0.1:5174/api/spotify/callback for
+// local sign-in (Spotify only allows plain http on a loopback IP) and the https workers.dev one.
+const redirectFor = (url) => `${url.origin}/api/spotify/callback`;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -65,7 +67,7 @@ export async function spotify(request, env, url) {
       response_type: 'code',
       client_id: env.SPOTIFY_CLIENT_ID,
       scope: SCOPES,
-      redirect_uri: REDIRECT,
+      redirect_uri: redirectFor(url),
       state,
     });
     return Response.redirect(`${ACCOUNTS}/authorize?${q}`, 302);
@@ -79,7 +81,7 @@ export async function spotify(request, env, url) {
     const d = await tokenRequest(env, {
       grant_type: 'authorization_code',
       code: url.searchParams.get('code') || '',
-      redirect_uri: REDIRECT,
+      redirect_uri: redirectFor(url),
     });
     await env.STORE.put('spotify_refresh', d.refresh_token);
     access = { token: d.access_token, expires: Date.now() + d.expires_in * 1000 };

@@ -3,13 +3,15 @@
   "name": "home-frame-dashboard",
   "main": "worker/index.js",
   "compatibility_date": "2026-09-30",
+  "workers_dev": true,
+  // Version preview URLs would be extra public addresses for the same Worker; not needed.
+  "preview_urls": false,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    // The Worker runs first for every path so ACCESS_KEY also guards the page.
+    "run_worker_first": true
   },
-  // Holds the Spotify refresh token. Locally, wrangler keeps it in .wrangler/state (ignored).
-  // Before deploying, create a real namespace (`npx wrangler kv namespace create STORE`) and
-  // put its id here.
-  "kv_namespaces": [{ "binding": "STORE", "id": "local-store" }]
+  // Holds the Spotify refresh token. `wrangler dev` uses a local copy in .wrangler/state (ignored).
+  "kv_namespaces": [{ "binding": "STORE", "id": "c71483122f7748b79ea1778223159b82" }]
 }

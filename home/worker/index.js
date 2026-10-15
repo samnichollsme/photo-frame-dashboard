@@ -10,24 +10,65 @@ const json = (body, status = 200) =>
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
 
-// In-memory cache per Worker instance. Good enough for one frame; a restart just refetches.
+// Two-level cache: memory per Worker instance, then KV so the result survives cold starts on
+// Cloudflare and a refused upstream request (TheSportsDB's shared free key returns 429s) still
+// shows the last good data. KV writes stay well under the free 1,000/day.
 const cache = new Map();
+let kv = null;
 async function cached(key, ttlMs, load) {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+  const stored = !hit && kv ? await kv.get(`cache:${key}`, 'json').catch(() => null) : null;
+  const last = hit || stored;
+  if (stored && Date.now() - stored.at < ttlMs) { cache.set(key, stored); return stored.value; }
   try {
     const value = await load();
-    cache.set(key, { at: Date.now(), value });
+    const entry = { at: Date.now(), value };
+    cache.set(key, entry);
+    if (kv) await kv.put(`cache:${key}`, JSON.stringify(entry)).catch(() => {});
     return value;
   } catch (err) {
-    if (hit) return hit.value; // keep showing the last good data
+    if (last) { cache.set(key, { at: Date.now() - ttlMs + 5 * 60e3, value: last.value }); return last.value; } // retry in 5 min
     throw err;
   }
+}
+
+// Mark a cached value as stale (it's kept as the fallback if the refetch fails).
+async function expire(key) {
+  const hit = cache.get(key);
+  if (hit) hit.at = 0;
+  const stored = kv ? await kv.get(`cache:${key}`, 'json').catch(() => null) : null;
+  if (stored && stored.at) await kv.put(`cache:${key}`, JSON.stringify({ at: 0, value: stored.value })).catch(() => {});
+}
+
+// When ACCESS_KEY is set (the deployed Worker), everything needs it: the kiosk opens
+// /?k=<key> once, gets a long-lived cookie, and the page's API calls send that cookie. Without
+// it a stranger with the workers.dev address could read the calendar or control Spotify.
+const COOKIE = 'frame_key';
+function checkAccess(request, env, url) {
+  if (!env.ACCESS_KEY) return null;
+  if (url.pathname === '/api/spotify/callback') return null; // protected by its one-time state
+  const cookie = (request.headers.get('cookie') || '').split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`));
+  if (cookie && cookie.slice(COOKIE.length + 1) === env.ACCESS_KEY) return null;
+  if (url.searchParams.get('k') === env.ACCESS_KEY) {
+    url.searchParams.delete('k');
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: url.pathname + url.search,
+        'set-cookie': `${COOKIE}=${env.ACCESS_KEY}; Path=/; Max-Age=315360000; HttpOnly; Secure; SameSite=Lax`,
+      },
+    });
+  }
+  return new Response('Locked', { status: 401, headers: { 'content-type': 'text/plain' } });
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    kv = env.STORE || null;
+    const denied = checkAccess(request, env, url);
+    if (denied) return denied;
     try {
       switch (url.pathname) {
         case '/api/weather': return json(await weather());
@@ -148,7 +189,7 @@ async function football(env) {
         if (live && live.status === 'done') { last = live; next = null; } else if (live) next = live;
       }
       // After the match window, fetch next/last again so the result replaces the fixture.
-      if (Date.now() >= ko + 150 * 60e3) cache.delete(`fixtures:${team.id}`);
+      if (Date.now() >= ko + 150 * 60e3) await expire(`fixtures:${team.id}`);
     }
     return { key: team.key, name: team.name, id: String(team.id), next, last };
   }));
