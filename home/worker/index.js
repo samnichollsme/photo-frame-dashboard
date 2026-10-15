@@ -214,10 +214,12 @@ async function calendar(env) {
   if (!env.CALENDARS) return { configured: false };
   const sources = JSON.parse(env.CALENDARS);
   return cached('calendar', 10 * 60e3, async () => {
+    // This month and next, as month grids show them (from the Monday on or before the 1st, six
+    // weeks each), with a day of slack either side for time-zone differences.
     const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // server-local midnight
-    from.setTime(from.getTime() - 864e5); // a day of slack either side for time-zone differences
-    const to = new Date(from.getTime() + 4 * 864e5);
+    const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const from = new Date(first.getTime() - (((first.getUTCDay() + 6) % 7) + 1) * 864e5);
+    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1) + 14 * 864e5);
     const events = [];
     for (const src of sources) {
       const r = await fetch(src.url.replace(/^webcal:/, 'https:'));

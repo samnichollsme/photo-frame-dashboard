@@ -1,6 +1,6 @@
 import { BINS, NIGHT, TEAM_STYLE } from './config.js';
 import { binIcon, playIcons, umbrellaIcon, weatherIcon } from './icons.js';
-import { loadFootball } from './football.js';
+import { espnIdFor, loadFootball, loadTables } from './football.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -139,12 +139,54 @@ function relative(ms) {
   return `in ${h} hour${h === 1 ? '' : 's'}`;
 }
 
-function eventRow(e, now, isToday) {
+// A timed event that started on an earlier day shows when it ends ("Until 10:00"), or "All day"
+// if it carries on past this day.
+function timeLabel(e, day) {
+  if (e.allDay) return 'All day';
+  const s = new Date(e.start);
+  if (+s >= +day) return hhmm(s);
+  const end = new Date(e.end);
+  return +end < +addDays(day, 1) ? `Until ${hhmm(end)}` : 'All day';
+}
+
+function eventRow(e, now, isToday, day) {
   const s = new Date(e.start);
   const past = isToday && !e.allDay && Date.parse(e.end) < +now;
   const soon = isToday && !e.allDay && +s > +now ? ` · ${relative(+s - +now)}` : '';
-  return `<div class="ev${past ? ' past' : ''}"><span class="t">${e.allDay ? 'All day' : hhmm(s)}</span>` +
+  return `<div class="ev${past ? ' past' : ''}"><span class="t">${timeLabel(e, day)}</span>` +
     `<span class="b" style="border-color:${esc(e.colour || '#B4B2A9')}">${esc(e.title)}<small>${esc(e.calendar)}${soon}</small></span></div>`;
+}
+
+const dayFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+const monthFmt = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
+const mondayOnOrBefore = (d) => addDays(d, -((d.getDay() + 6) % 7));
+
+// Weeks (Monday first) covering the month that contains `first`.
+function monthWeeks(first) {
+  const weeks = [];
+  let d = mondayOnOrBefore(first);
+  const next = new Date(first.getFullYear(), first.getMonth() + 1, 1);
+  while (+d < +next) {
+    weeks.push(Array.from({ length: 7 }, (_, i) => addDays(d, i)));
+    d = addDays(d, 7);
+  }
+  return weeks;
+}
+
+// Small month overview at the top of the column: a dot per calendar with something on that day.
+function miniMonth(today) {
+  const first = new Date(today.getFullYear(), today.getMonth(), 1);
+  let html = `<div class="mini-month"><div class="mm-title">${monthFmt.format(first)}</div><div class="mm-grid">`;
+  html += ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<span class="mm-dow">${d}</span>`).join('');
+  for (const week of monthWeeks(first)) {
+    for (const d of week) {
+      if (d.getMonth() !== first.getMonth()) { html += '<span class="mm-day out"></span>'; continue; }
+      const colours = [...new Set(eventsOn(d).map((e) => e.colour || '#B4B2A9'))].slice(0, 3);
+      const cls = +d === +today ? ' today' : +d < +today ? ' past' : '';
+      html += `<span class="mm-day${cls}">${d.getDate()}<i>${colours.map((c) => `<b style="background:${esc(c)}"></b>`).join('')}</i></span>`;
+    }
+  }
+  return `${html}</div></div>`;
 }
 
 function renderCalendar() {
@@ -159,24 +201,105 @@ function renderCalendar() {
   }
   const now = new Date();
   const today = addDays(now, 0);
+  let html = miniMonth(today);
   const todays = eventsOn(today);
-  let html = '<p class="label">Today</p>';
+  html += '<p class="label">Today</p>';
   let lineDone = false;
   for (const e of todays) {
     if (!lineDone && !e.allDay && Date.parse(e.start) > +now) {
       html += '<div class="nowline"><span>Now</span><i></i></div>';
       lineDone = true;
     }
-    html += eventRow(e, now, true);
+    html += eventRow(e, now, true, today);
   }
   if (!todays.length) html += '<p class="muted">Nothing on</p>';
   else if (!lineDone) html += '<div class="nowline"><span>Now</span><i></i></div>';
   const tomorrow = eventsOn(addDays(today, 1));
   html += '<p class="label gap">Tomorrow</p>';
-  html += tomorrow.length ? tomorrow.map((e) => eventRow(e, now, false)).join('') : '<p class="muted">Nothing on</p>';
+  html += tomorrow.length ? tomorrow.map((e) => eventRow(e, now, false, addDays(today, 1))).join('') : '<p class="muted">Nothing on</p>';
+  // The three days after that, in a smaller style; days with nothing on are left out.
+  for (let i = 2; i < 5; i++) {
+    const day = addDays(today, i);
+    const evs = eventsOn(day);
+    if (!evs.length) continue;
+    html += `<div class="later"><p class="label gap">${dayFmt.format(day)}</p>${evs.map((e) => eventRow(e, now, false, day)).join('')}</div>`;
+  }
   if (calError) html += '<p class="stale">Not updated recently</p>';
   el.innerHTML = html;
+  if (fsOpen === 'cal') renderMonthView();
 }
+
+// ---------- Full-screen views: month calendar and league table ----------
+// Opened by tapping the calendar column or a team card; closed with the X, or by themselves
+// after two minutes.
+
+let fsOpen = null;
+let fsMonth = 0; // 0 = this month, 1 = next (the server sends both)
+let fsTimer = null;
+
+function openFs(what) {
+  fsOpen = what;
+  fsMonth = 0;
+  renderFs();
+  $('fs').hidden = false;
+  clearTimeout(fsTimer);
+  fsTimer = setTimeout(closeFs, 2 * 60e3);
+}
+function closeFs() {
+  fsOpen = null;
+  clearTimeout(fsTimer);
+  $('fs').hidden = true;
+  $('fs').innerHTML = '';
+}
+function renderFs() {
+  if (fsOpen === 'cal') renderMonthView();
+  else if (fsOpen && fsOpen.startsWith('table:')) renderTableView(fsOpen.slice(6));
+}
+
+function renderMonthView() {
+  if (!calData || !calData.configured) { $('fs').innerHTML = '<button class="fs-close" data-fs-close aria-label="Close">×</button><p class="muted">No calendar yet</p>'; return; }
+  const today = addDays(new Date(), 0);
+  const first = new Date(today.getFullYear(), today.getMonth() + fsMonth, 1);
+  let html = `<div class="fs-head"><button class="fs-nav" data-cal-nav="-1" ${fsMonth === 0 ? 'disabled' : ''} aria-label="Previous month">‹</button>
+    <h2>${monthFmt.format(first)}</h2>
+    <button class="fs-nav" data-cal-nav="1" ${fsMonth === 1 ? 'disabled' : ''} aria-label="Next month">›</button>
+    <button class="fs-close" data-fs-close aria-label="Close">×</button></div>`;
+  html += '<div class="mv-grid">';
+  html += ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((d) => `<span class="mv-dow">${d}</span>`).join('');
+  for (const week of monthWeeks(first)) {
+    for (const d of week) {
+      const out = d.getMonth() !== first.getMonth();
+      const evs = out ? [] : eventsOn(d);
+      const cls = `${out ? ' out' : ''}${+d === +today ? ' today' : ''}${!out && +d < +today ? ' past' : ''}`;
+      html += `<div class="mv-day${cls}"><span class="mv-num">${out ? '' : d.getDate()}</span>`;
+      html += evs.slice(0, 3).map((e) => `<span class="mv-ev" style="border-color:${esc(e.colour || '#B4B2A9')}">${e.allDay || +new Date(e.start) < +d ? '' : `<em>${hhmm(new Date(e.start))}</em> `}${esc(e.title)}</span>`).join('');
+      if (evs.length > 3) html += `<span class="mv-more">+${evs.length - 3} more</span>`;
+      html += '</div>';
+    }
+  }
+  $('fs').innerHTML = `${html}</div>`;
+}
+
+function renderTableView(key) {
+  const t = tables && tables[key];
+  const me = espnIdFor(key);
+  const style = (TEAM_STYLE[key] || {}).style || 'solid';
+  let html = `<div class="fs-head"><h2>${esc(t ? t.league : 'League table')}</h2><button class="fs-close" data-fs-close aria-label="Close">×</button></div>`;
+  if (!t) { $('fs').innerHTML = `${html}<p class="muted">Table not available yet</p>`; return; }
+  html += `<table class="lt"><thead><tr><th>#</th><th class="tn">Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead><tbody>`;
+  html += t.rows.map((r) => `<tr class="${r.id === me ? `me kit-${style}` : ''}"><td>${r.rank}</td><td class="tn">${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${r.gd > 0 ? '+' : ''}${r.gd}</td><td><b>${r.pts}</b></td></tr>`).join('');
+  $('fs').innerHTML = `${html}</tbody></table>`;
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest) return;
+  const nav = e.target.closest('[data-cal-nav]');
+  if (nav) { fsMonth = Math.max(0, Math.min(1, fsMonth + Number(nav.dataset.calNav))); renderMonthView(); return; }
+  if (e.target.closest('[data-fs-close]')) { closeFs(); return; }
+  if (fsOpen) return;
+  const opener = e.target.closest('[data-fs-open]');
+  if (opener) openFs(opener.dataset.fsOpen);
+});
 
 // ---------- Football ----------
 
@@ -208,12 +331,41 @@ function resultLetter(t, f) {
   return us > them ? '<b class="w">W</b>' : us < them ? '<b class="l">L</b>' : '<b class="d">D</b>';
 }
 
+// League table rows around the team: up to five above and five below. fitSnippets() then trims
+// rows furthest from the team until the card no longer overflows, so it fills whatever space
+// the card has.
+function tableSnippet(key) {
+  const t = tables && tables[key];
+  if (!t) return '';
+  const me = espnIdFor(key);
+  const i = t.rows.findIndex((r) => r.id === me);
+  if (i < 0) return '';
+  const start = Math.max(0, Math.min(i - 5, t.rows.length - 11));
+  const rows = t.rows.slice(start, start + 11);
+  return `<div class="snip">${rows.map((r, j) => `<div class="snip-row${r.id === me ? ' me' : ''}" data-d="${start + j - i}"><span>${r.rank}</span><span class="tn">${esc(r.short)}</span><span>${r.played}</span><span>${r.gd > 0 ? '+' : ''}${r.gd}</span><b>${r.pts}</b></div>`).join('')}</div>`;
+}
+
+function fitSnippets() {
+  for (const card of document.querySelectorAll('.team')) {
+    const snip = card.querySelector('.snip');
+    if (!snip) continue;
+    let guard = 12;
+    while (card.scrollHeight > card.clientHeight + 1 && guard-- > 0) {
+      const rows = [...snip.querySelectorAll('.snip-row:not(.me)')];
+      if (!rows.length) break;
+      // Drop the row furthest from the team; on a tie, drop the one below.
+      rows.sort((a, b) => Math.abs(b.dataset.d) - Math.abs(a.dataset.d) || b.dataset.d - a.dataset.d);
+      rows[0].remove();
+    }
+  }
+}
+
 function teamCard(t) {
   const st = TEAM_STYLE[t.key] || { short: t.name.slice(0, 3).toUpperCase(), style: 'solid' };
   const p = pickFixture(t);
   const stripe = st.style === 'halves' ? '<div class="stripe"><i></i><i></i></div>' : '';
-  const cls = `team kit-${st.style}${p && p.kind === 'live' ? ' live' : ''}`;
-  if (!p) return `<div class="${cls}">${stripe}<div class="pad"><p class="label">${esc(t.name)}</p><p class="muted">No fixtures found</p></div></div>`;
+  const cls = `team kit-${st.style}${p && p.kind === 'live' ? ' live' : ''}" data-fs-open="table:${t.key}`;
+  if (!p) return `<div class="${cls}">${stripe}<div class="pad"><p class="label">${esc(t.name)}</p><p class="muted">No fixtures found</p></div>${tableSnippet(t.key)}</div>`;
   const f = p.f;
   if (p.kind === 'next') {
     const home = f.home.id === t.id;
@@ -224,7 +376,7 @@ function teamCard(t) {
       <div class="sub">v ${esc(opp.name)} (${home ? 'home' : 'away'})</div>
       <div class="ko">${kickoffText(f.kickoff)}</div>
       ${t.last && t.last.status === 'done' ? `<div class="sub">Last: ${resultLetter(t, t.last)} ${t.last.home.goals}–${t.last.away.goals} v ${esc(t.last.home.id === t.id ? t.last.away.name : t.last.home.name)}</div>` : ''}
-    </div></div>`;
+    </div>${tableSnippet(t.key)}</div>`;
   }
   const badge = p.kind === 'live'
     ? `<span class="badge">${f.statusShort === 'HT' ? 'Half time' : f.elapsed ? `Live ${f.elapsed}'` : 'In progress'}</span>`
@@ -235,13 +387,14 @@ function teamCard(t) {
     <div class="row score">${crest(f.home, f.home.id === t.id ? st.short : '')}<span>${esc(f.home.name)}</span><b>${f.home.goals == null ? '' : f.home.goals}</b></div>
     <div class="row score">${crest(f.away, f.away.id === t.id ? st.short : '')}<span>${esc(f.away.name)}</span><b>${f.away.goals == null ? '' : f.away.goals}</b></div>
     ${progress}
-  </div></div>`;
+  </div>${tableSnippet(t.key)}</div>`;
 }
 
 function renderFootball(d, err) {
   const el = $('teams');
   if (!d) { el.innerHTML = `<div class="team kit-solid"><div class="pad"><p class="label">Football</p><p class="sub">${err ? 'Unavailable, retrying' : 'Loading…'}</p></div></div>`; return; }
   el.innerHTML = d.teams.map(teamCard).join('');
+  fitSnippets();
 }
 
 // Fetched on the frame (see football.js); the server's cached copy is the fallback.
@@ -260,6 +413,16 @@ async function footballLoop() {
   setTimeout(footballLoop, err && !football ? 60e3 : busy ? 60e3 : 15 * 60e3);
 }
 footballLoop();
+
+// League tables: hourly from ESPN (cached on the frame), then redraw the cards.
+let tables = null;
+async function tablesLoop() {
+  try { tables = await loadTables(); } catch (err) { /* keep last */ }
+  if (football) renderFootball(football, null);
+  if (fsOpen && fsOpen.startsWith('table:')) renderFs();
+  setTimeout(tablesLoop, 30 * 60e3);
+}
+tablesLoop();
 
 // ---------- Spotify (hidden until connected and playing) ----------
 

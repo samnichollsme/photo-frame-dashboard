@@ -10,8 +10,8 @@ const TSDB = 'https://www.thesportsdb.com/api/v1/json/123';
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 
 export const TEAMS = [
-  { key: 'lfc', name: 'Liverpool', id: '133602', espn: '364' },
-  { key: 'khfc', name: 'Kidderminster Harriers', id: '134448', espn: '319' },
+  { key: 'lfc', name: 'Liverpool', id: '133602', espn: '364', table: 'eng.1', tableName: 'Premier League' },
+  { key: 'khfc', name: 'Kidderminster Harriers', id: '134448', espn: '319', table: 'eng.5', tableName: 'National League' },
 ];
 
 const ESPN_LEAGUES = [
@@ -113,3 +113,36 @@ export async function loadFootball() {
   }));
   return { configured: true, updated: Date.now(), teams };
 }
+
+// League tables from ESPN's public standings, refreshed hourly. Returns { teamKey: { league, rows } }
+// where each row is { rank, id, name, short, played, won, drawn, lost, gd, pts }.
+const ESPN_STANDINGS = 'https://site.api.espn.com/apis/v2/sports/soccer';
+export async function loadTables() {
+  const out = {};
+  await Promise.all(TEAMS.map(async (team) => {
+    const key = `table:${team.table}`;
+    const saved = unstash(key);
+    if (saved && Date.now() - saved.at < 3600e3) { out[team.key] = saved.value; return; }
+    try {
+      const d = await getJSON(`${ESPN_STANDINGS}/${team.table}/standings`);
+      const group = (d.children || [d])[0];
+      const rows = group.standings.entries.map((e) => {
+        const st = {};
+        for (const x of e.stats) st[x.name] = x.value;
+        return {
+          rank: st.rank, id: e.team.id, name: e.team.displayName, short: e.team.shortDisplayName || e.team.displayName,
+          played: st.gamesPlayed, won: st.wins, drawn: st.ties, lost: st.losses,
+          gd: st.pointDifferential, pts: st.points,
+        };
+      }).sort((a, b) => a.rank - b.rank);
+      const value = { league: team.tableName, rows };
+      stash(key, value);
+      out[team.key] = value;
+    } catch (err) {
+      if (saved) out[team.key] = saved.value;
+    }
+  }));
+  return out;
+}
+
+export const espnIdFor = (key) => (TEAMS.find((t) => t.key === key) || {}).espn;
