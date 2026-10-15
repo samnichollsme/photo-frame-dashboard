@@ -137,19 +137,17 @@ Stock, read before any change and never written. **Identical to the 114K's** in 
 
 ## Backup
 
-In progress over network ADB (about 200–400 KB/s), every partition except `UDISK` and `cache`, plus
-raw eMMC from sector 0 for 36 MiB:
+Every partition except `UDISK` and `cache`, plus raw eMMC from sector 0 for 36 MiB, was read over
+network ADB (about 200–400 KB/s; 1.25 GiB took about an hour):
 
 ```sh
 adb exec-out "su 0 dd if=/dev/block/by-name/<name> bs=1048576 2>/dev/null" > <name>.img   # su 1000 for misc and frp
 ```
 
-Each image is checked for its exact size (`/sys/block/mmcblk0/<part>/size` × 512), an MD5 match
-with `md5sum` on the frame, its SHA-256, 1 MiB blocks that are all `0xCC`, and a gzip copy that
-passes `gzip -t` and decompresses to the same SHA-256. `boot`, `bootloader` and `env` are read twice.
-
-So far: the first 36 MiB, `env` and `boot` pass every check, including the re-reads. The other
-partitions are still being read; this section will be updated.
+Every image passed: exact size (`/sys/block/mmcblk0/<part>/size` × 512), an MD5 match with
+`md5sum` on the frame, no 1 MiB block that is all `0xCC`, fresh re-reads of `boot`, `bootloader`
+and `env` with the same SHA-256, and gzip copies that pass `gzip -t` and decompress to the same
+SHA-256. No read needed a retry.
 
 A first attempt stopped partway through `bootloader` when the read was interrupted; the partial file
 was deleted. A short read is caught by the size check.
