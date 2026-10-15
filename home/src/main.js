@@ -11,7 +11,7 @@ const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getD
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
 // Fetch JSON from our own server. Failures keep the last good data and retry with backoff, since
-// Wi-Fi is often not up for the first minute after the frame boots.
+// Wi-Fi is often not up for the first minute after the frame boots. t
 function poll(path, everyMs, render) {
   let last = null;
   let delay = 5e3;
