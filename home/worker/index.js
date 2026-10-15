@@ -100,9 +100,10 @@ async function weather() {
     const q = new URLSearchParams({
       latitude: LOCATION.latitude,
       longitude: LOCATION.longitude,
-      current: 'temperature_2m,weather_code,is_day',
-      hourly: 'precipitation_probability,weather_code',
-      daily: 'weather_code,temperature_2m_max,temperature_2m_min',
+      current: 'temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m',
+      hourly: 'temperature_2m,precipitation_probability,weather_code,is_day',
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset',
+      wind_speed_unit: 'mph',
       timezone: TIMEZONE,
       forecast_days: '4',
     });
@@ -118,13 +119,35 @@ async function weather() {
       if (d.hourly.precipitation_probability[i] >= 50) { rainFrom = d.hourly.time[i].slice(11, 16); break; }
     }
 
+    // Every other hour for the next 12, from the next hour on.
+    const hours = [];
+    for (let i = Math.max(start, 0) + 1; hours.length < 6 && i < d.hourly.time.length; i += 2) {
+      hours.push({
+        time: d.hourly.time[i].slice(11, 16),
+        code: d.hourly.weather_code[i],
+        isDay: d.hourly.is_day[i] === 1,
+        temp: Math.round(d.hourly.temperature_2m[i]),
+        rain: d.hourly.precipitation_probability[i],
+      });
+    }
+
+    // The next sunrise or sunset after now (local times like "2026-10-15T18:12").
+    const sun = [];
+    for (let i = 0; i < 2; i++) sun.push({ kind: 'rise', at: d.daily.sunrise[i] }, { kind: 'set', at: d.daily.sunset[i] });
+    const nextSun = sun.find((e) => e.at > d.current.time) || null;
+
     return {
       updated: Date.now(),
       now: {
         temp: Math.round(d.current.temperature_2m),
+        feels: Math.round(d.current.apparent_temperature),
         code: d.current.weather_code,
         isDay: d.current.is_day === 1,
+        wind: Math.round(d.current.wind_speed_10m),
+        windFrom: d.current.wind_direction_10m,
       },
+      hours,
+      sun: nextSun && { kind: nextSun.kind, time: nextSun.at.slice(11, 16) },
       today: { max: Math.round(d.daily.temperature_2m_max[0]), min: Math.round(d.daily.temperature_2m_min[0]) },
       rainFrom,
       days: d.daily.time.slice(1).map((date, i) => ({

@@ -41,6 +41,22 @@ code { font-family: monospace; font-size: 0.9em; color: #FAC775; }
 .wx.rain { color: #85B7EB; }
 .wx.cold { color: #B5D4F4; }
 .wx.cloud { color: #B4B2A9; }
+.hours {
+  display: flex; background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 14px 4px 12px;
+}
+.hours:empty, .stats:empty { display: none; }
+.hr { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 22px; }
+.hr .muted { font-size: 16px; font-variant-numeric: tabular-nums; }
+.hr .wx { font-size: 32px; display: flex; }
+.hr .pop { color: #85B7EB; font-size: 15px; min-height: 20px; }
+.stats { display: flex; gap: 8px; margin: 10px 0 24px; }
+.stat {
+  flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 10px 8px 10px 10px;
+}
+.stat .muted { font-size: 14px; white-space: nowrap; }
+.stat b { font-weight: 500; font-size: 24px; white-space: nowrap; }
+.stat b small { font-size: 15px; font-weight: 400; color: #B4B2A9; }
 .hint { color: #FAC775; font-size: 20px; margin: 12px 0 16px; min-height: 26px; }
 .minis { display: flex; gap: 10px; }
 .mini-days { display: flex; gap: 10px; flex: 2; }

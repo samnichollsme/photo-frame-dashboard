@@ -24,6 +24,10 @@ export function weatherIcon(code, isDay = true) {
 }
 
 export const binIcon = svg('<path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3"/>');
+export const windIcon = svg('<path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/>');
+export const feelsIcon = svg('<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/>');
+export const sunriseIcon = svg('<path d="M17 18a5 5 0 0 0-10 0M12 2v7M4.2 10.2l1.4 1.4M2 18h2M20 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4-4 4 4"/>');
+export const sunsetIcon = svg('<path d="M17 18a5 5 0 0 0-10 0M12 9V2M4.2 10.2l1.4 1.4M2 18h2M20 18h2M18.4 11.6l1.4-1.4M23 22H1M16 5l-4 4-4-4"/>');
 export const umbrellaIcon = svg('<path d="M12 3a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9zM12 12v7a2 2 0 0 0 4 0"/>', 'sm');
 export const playIcons = {
   prev: svg('<path d="M19 20L9 12l10-8v16zM5 19V5"/>'),

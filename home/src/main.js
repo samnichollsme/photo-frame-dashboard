@@ -1,5 +1,5 @@
 import { BINS, NIGHT, TEAM_STYLE } from './config.js';
-import { binIcon, playIcons, umbrellaIcon, weatherIcon } from './icons.js';
+import { binIcon, feelsIcon, playIcons, sunriseIcon, sunsetIcon, umbrellaIcon, weatherIcon, windIcon } from './icons.js';
 import { espnIdFor, loadFootball, loadTables } from './football.js';
 
 const $ = (id) => document.getElementById(id);
@@ -93,7 +93,21 @@ poll('/api/weather', 15 * 60e3, (w) => {
     const day = DAY[new Date(`${d.date}T12:00:00`).getDay()];
     return `<div class="mini"><span class="muted">${day}</span><span class="wx ${i.tone}">${i.svg}</span><span>${d.max}°</span></div>`;
   }).join('');
+  // Older cached payloads (before these fields existed) just leave the gap empty.
+  $('weather-hours').innerHTML = (w.hours || []).map((h) => {
+    const i = weatherIcon(h.code, h.isDay);
+    const rain = h.rain >= 10 ? `${h.rain}%` : '';
+    return `<div class="hr"><span class="muted">${h.time}</span><span class="wx ${i.tone}">${i.svg}</span><span>${h.temp}°</span><span class="pop">${rain}</span></div>`;
+  }).join('');
+  $('weather-stats').innerHTML = w.now.feels == null ? '' : [
+    stat(feelsIcon, 'Feels like', `${w.now.feels}°`),
+    stat(windIcon, `Wind ${compass(w.now.windFrom)}`, `${w.now.wind} <small>mph</small>`),
+    w.sun ? stat(w.sun.kind === 'rise' ? sunriseIcon : sunsetIcon, w.sun.kind === 'rise' ? 'Sunrise' : 'Sunset', w.sun.time) : '',
+  ].join('');
 });
+
+const stat = (icon, label, value) => `<div class="stat"><span class="muted">${icon} ${label}</span><b>${value}</b></div>`;
+const compass = (deg) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
 
 // ---------- Bins ----------
 
