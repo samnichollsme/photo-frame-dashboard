@@ -15,5 +15,6 @@ export const TEAM_STYLE = {
   khfc: { short: 'KH', style: 'halves' },
 };
 
-// Dim the screen between these hours (24-hour clock).
+// Black out the screen between these hours (24-hour clock). The kiosk switches the backlight off
+// on its own schedule: am start ... --ei night_from 22 --ei night_to 7 (keep the two the same).
 export const NIGHT = { from: 22, to: 7 };

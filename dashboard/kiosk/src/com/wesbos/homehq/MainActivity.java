@@ -43,6 +43,8 @@ import android.widget.TextView;
  *     adb shell am start -n com.wesbos.homehq/.MainActivity --ez debug true
  * - Launch with a URL: adb shell am start -a android.intent.action.VIEW -d <url> -n com.wesbos.homehq/.MainActivity
  * - Set the saved URL, used on every later launch: adb shell am start -n com.wesbos.homehq/.MainActivity --es url <url>
+ * - Night schedule (backlight off, a touch wakes it for a minute), see NightMode:
+ *     adb shell am start -n com.wesbos.homehq/.MainActivity --ei night_from 22 --ei night_to 7
  * - Offer the kiosk as a Home app (--ez home false undoes it), then pick it:
  *     adb shell am start -n com.wesbos.homehq/.MainActivity --ez home true
  *     adb shell cmd package set-home-activity com.wesbos.homehq/.Home
@@ -60,6 +62,7 @@ public class MainActivity extends Activity {
   static final float EXIT_SLOP_PX = 60;
 
   private WebView web;
+  private NightMode night;
   private final Handler handler = new Handler(Looper.getMainLooper());
   // Not cleared in onDestroy, so a navigation rebind that has started always finishes.
   private final Handler rebindHandler = new Handler(Looper.getMainLooper());
@@ -131,6 +134,8 @@ public class MainActivity extends Activity {
     applyDebugFlag(getIntent());
     applyHomeFlag(getIntent());
     keepNavigationEnabled();
+    night = new NightMode(this, getSharedPreferences(PREFS, MODE_PRIVATE));
+    night.apply(getIntent());
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         | WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
@@ -191,11 +196,13 @@ public class MainActivity extends Activity {
   protected void onResume() {
     super.onResume();
     NavigationService.setDashboardVisible(true);
+    night.start();
   }
 
   @Override
   protected void onPause() {
     cancelExit();
+    night.stop();
     NavigationService.setDashboardVisible(false);
     super.onPause();
   }
@@ -206,6 +213,7 @@ public class MainActivity extends Activity {
     setIntent(intent);
     applyDebugFlag(intent);
     applyHomeFlag(intent);
+    night.apply(intent);
     String url = urlFrom(intent);
     if (url != null) {
       handler.removeCallbacks(retry);
@@ -415,6 +423,7 @@ public class MainActivity extends Activity {
   /** Watches for the two-finger exit hold; all touches still go to the page. */
   @Override
   public boolean dispatchTouchEvent(MotionEvent e) {
+    night.onTouch(e);
     switch (e.getActionMasked()) {
       case MotionEvent.ACTION_POINTER_DOWN:
         if (e.getPointerCount() == 2) {

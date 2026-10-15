@@ -46,9 +46,7 @@ function tick() {
     lastMinute = m;
     $('clock').textContent = m;
     $('date').textContent = dateFmt.format(now);
-    const h = now.getHours();
-    const night = NIGHT.from > NIGHT.to ? h >= NIGHT.from || h < NIGHT.to : h >= NIGHT.from && h < NIGHT.to;
-    $('night').className = night ? 'night on' : 'night';
+    updateNight(now);
     renderBins(now);
     renderCalendar();
     // Reload once a day at 03:00 to clear any slow leaks.
@@ -56,6 +54,28 @@ function tick() {
   }
 }
 setInterval(tick, 1000);
+
+// Night: the page goes black (the kiosk switches the backlight off too). A tap wakes it for a
+// minute, and every touch while awake extends that. The tap that wakes it is swallowed, so it
+// can't press whatever was under the blackout.
+let awakeUntil = 0;
+let swallowClickUntil = 0;
+function isNight(now) {
+  const h = now.getHours();
+  return NIGHT.from > NIGHT.to ? h >= NIGHT.from || h < NIGHT.to : h >= NIGHT.from && h < NIGHT.to;
+}
+function updateNight(now) {
+  $('night').className = isNight(now) && Date.now() > awakeUntil ? 'night on' : 'night';
+}
+document.addEventListener('touchstart', () => {
+  if ($('night').classList.contains('on')) swallowClickUntil = Date.now() + 1000;
+  awakeUntil = Date.now() + 60e3;
+  updateNight(new Date());
+}, { capture: true, passive: true });
+document.addEventListener('click', (e) => {
+  if (Date.now() < swallowClickUntil) { e.stopPropagation(); e.preventDefault(); swallowClickUntil = 0; }
+}, true);
+setInterval(() => updateNight(new Date()), 5e3);
 
 // ---------- Weather ----------
 

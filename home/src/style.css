@@ -120,9 +120,9 @@ b.w { color: #97C459; } b.l { color: #F09595; } b.d { color: #D3D1C7; }
 .controls button.main { background: #EEEDFE; color: #26215C; }
 .device { color: #CECBF6; font-size: 17px; background: rgba(255, 255, 255, 0.08); padding: 8px 14px; border-radius: 999px; white-space: nowrap; }
 
-/* Night: dim everything with an overlay (the page can't change the backlight) */
-.night { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 2s; }
-.night.on { opacity: 0.6; }
+/* Night: black out the page; the kiosk turns the backlight off. Tapping wakes it (main.js). */
+.night { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 10; background: #000; opacity: 0; pointer-events: none; transition: opacity 2s; }
+.night.on { opacity: 1; pointer-events: auto; }
 .team.kit-solid img.crest { background: #FCEBEB; border-radius: 50%; padding: 4px; }
 .team.kit-solid b.l { color: #FCEBEB; }
 .controls button.busy { opacity: 0.5; }
