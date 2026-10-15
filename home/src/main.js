@@ -257,7 +257,8 @@ async function spotifyLoop() {
     // Show while playing, and for 15 minutes after pausing so it can be resumed from the frame.
     const show = !!(s && s.item && (s.isPlaying || Date.now() - pausedSince < 15 * 60e3));
     renderPlayer(show ? s : null);
-    wait = s && s.isPlaying ? 5e3 : 30e3;
+    // Every 5 s while playing (progress bar), every 10 s otherwise so new music shows up quickly.
+    wait = s && s.isPlaying ? 5e3 : 10e3;
   } catch (err) {
     wait = 60e3;
   }
